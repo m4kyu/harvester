@@ -27,15 +27,15 @@ type TorrentInfo struct {
 type Torrent struct {
 	InfoHash [20]byte 
 
-	Announce string `bencode:"announce"`
+	Announce 			string `bencode:"announce"`
 	AnnouncesList []string `bencode:"announce-list"`
 	
   Info TorrentInfo `bencode:"info"`
   
 
-	Created int `bencode:"creation date"`
+	Created   int `bencode:"creation date"`
 	CreatedBy string `bencode:"created by"`
-	Comment string `bencode:"comment"`
+	Comment   string `bencode:"comment"`
 
 }
 
@@ -52,12 +52,12 @@ func FromFile(path string) (Torrent, error) {
 
 	torrent := Torrent{}
 	bencode.Unmarshal(file, &torrent)
-	torrent.InfoHash, err = hash(torrent.Info)
+	torrent.InfoHash, err = infoHash(torrent.Info)
 	return torrent, err
 }
 
 
-func hash(info TorrentInfo) ([20]byte, error) {
+func infoHash(info TorrentInfo) ([20]byte, error) {
 	buffer := bytes.Buffer{}
 	err := bencode.Marshal(&buffer, info)
   if err != nil {
