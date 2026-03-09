@@ -3,9 +3,7 @@ package harvester
 import (
 	"fmt"
 	"os"
-	"runtime"
 	"sync"
-	"sync/atomic"
 
 	"github.com/m4kyu/harvester/internal/p2p"
 	"github.com/m4kyu/harvester/internal/torrent"
@@ -19,7 +17,6 @@ func DownloadTorrent(torrent torrent.Torrent) error {
 		return err
 	}
 
-	var completed atomic.Int32
 	workQueue := make(chan p2p.Piece, torrent.PiecesCount)
 	prepearWorkChan(workQueue, torrent)
 
@@ -31,25 +28,25 @@ func DownloadTorrent(torrent torrent.Torrent) error {
 		fmt.Printf("IP: %v. PORT: %v\n", peer.IP, peer.Port)
 
 		wg.Add(1)
-		go p2p.HandlePeer(peer, torrent, &completed, &wg, workQueue, resultQueue)
+		go p2p.HandlePeer(peer, torrent, &wg, workQueue, resultQueue)
 	}
 
 	fmt.Println("Peers count: ", len(peers))
 
-	for completed.Load() < int32(torrent.PiecesCount) {
-		runtime.Gosched()
+	buffer := make([]byte, torrent.Info.Len)
+	downloaded := 0
+	for downloaded < torrent.PiecesCount {
+		piece := <-resultQueue
+		begin, end := torrent.PieceBounds(piece.Index)
+		copy(buffer[begin:end], piece.Data)
+
+		downloaded++
 	}
 
 	close(workQueue)
 	close(resultQueue)
-	fmt.Println("Combining")
-	final_data := make([]byte, torrent.PiecesCount*torrent.Info.PieceSize)
-	for i := range resultQueue {
-		//		fmt.Println("Adding: ", i.Index)
-		copy(final_data[i.Index*torrent.Info.PieceSize:], i.Data)
-	}
 
-	err = os.WriteFile("debian.iso", final_data, 0o644)
+	err = os.WriteFile("debian.iso", buffer, 0o644)
 	if err != nil {
 		fmt.Println("ERROR: ", err)
 		return err

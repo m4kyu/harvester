@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"runtime"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/m4kyu/harvester/internal/client"
@@ -27,7 +26,7 @@ type Block struct {
 	Size  uint32
 }
 
-func HandlePeer(peer pr.Peer, torrent tr.Torrent, completed *atomic.Int32, wg *sync.WaitGroup, workQueue chan Piece, resQueue chan Piece) {
+func HandlePeer(peer pr.Peer, torrent tr.Torrent, wg *sync.WaitGroup, workQueue chan Piece, resQueue chan Piece) {
 	defer wg.Done()
 
 	var clientID [20]byte
@@ -90,8 +89,6 @@ func HandlePeer(peer pr.Peer, torrent tr.Torrent, completed *atomic.Int32, wg *s
 			fmt.Printf("Sucssesfuly donwloaded piece #%v From: %v\n", piece.Index, peer.IP)
 			piece.Data = data
 			resQueue <- piece
-
-			completed.Add(1)
 		}
 	}
 }

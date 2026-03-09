@@ -55,6 +55,14 @@ func FromFile(path string) (Torrent, error) {
 	return torrent, err
 }
 
+func (t *Torrent) PieceBounds(index int) (int, int) {
+	begin := index * t.Info.PieceSize
+	end := begin + t.Info.PieceSize
+	end = min(end, t.Info.Len)
+
+	return begin, end
+}
+
 func infoHash(info TorrentInfo) ([20]byte, error) {
 	buffer := bytes.Buffer{}
 	err := bencode.Marshal(&buffer, info)
