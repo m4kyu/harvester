@@ -3,6 +3,8 @@ package torrent
 import (
 	"bytes"
 	"crypto/sha1"
+	"fmt"
+	"io"
 	"os"
 
 	bencode "github.com/jackpal/bencode-go"
@@ -20,7 +22,7 @@ type TorrentInfo struct {
 	Name string `bencode:"name"`
 	Len  int    `bencode:"length"`
 
-	//  Files []TFile `bencode:"files"`
+	Files []TFile `bencode:"files"`
 }
 
 type Torrent struct {
@@ -31,6 +33,7 @@ type Torrent struct {
 
 	Info        TorrentInfo `bencode:"info"`
 	PiecesCount int
+	IsMultiFile bool
 
 	Created   int    `bencode:"creation date"`
 	CreatedBy string `bencode:"created by"`
@@ -49,8 +52,26 @@ func FromFile(path string) (Torrent, error) {
 	if err != nil {
 		return Torrent{}, err
 	}
-	torrent.InfoHash, err = infoHash(torrent.Info)
+
+	// TODO: Fix tmp solution
+	_, err = file.Seek(0, 0)
+	if err != nil {
+		return Torrent{}, err
+	}
+
+	torrent.InfoHash, err = infoHash(file)
+	if err != nil {
+		return Torrent{}, err
+	}
 	torrent.PiecesCount = len(torrent.Info.Pieces) / 20
+
+	if len(torrent.Info.Files) > 0 {
+		torrent.IsMultiFile = true
+		torrent.Info.Len = 0
+		for _, f := range torrent.Info.Files {
+			torrent.Info.Len += f.Len
+		}
+	}
 
 	return torrent, err
 }
@@ -63,9 +84,25 @@ func (t *Torrent) PieceBounds(index int) (int, int) {
 	return begin, end
 }
 
-func infoHash(info TorrentInfo) ([20]byte, error) {
+func infoHash(r io.Reader) ([20]byte, error) {
+	var m any
+	m, err := bencode.Decode(r)
+	if err != nil {
+		return [20]byte{}, err
+	}
+
+	topMap, ok := m.(map[string]any)
+	if !ok {
+		return [20]byte{}, fmt.Errorf("coldnt map bencode")
+	}
+
+	infoMap, ok := topMap["info"]
+	if !ok {
+		return [20]byte{}, fmt.Errorf("couldnt extract info")
+	}
+
 	buffer := bytes.Buffer{}
-	err := bencode.Marshal(&buffer, info)
+	err = bencode.Marshal(&buffer, infoMap)
 	if err != nil {
 		return [20]byte{}, err
 	}

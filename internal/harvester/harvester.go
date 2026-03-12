@@ -3,6 +3,8 @@ package harvester
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"runtime"
 	"sync"
 
 	"github.com/m4kyu/harvester/internal/p2p"
@@ -41,15 +43,53 @@ func DownloadTorrent(torrent torrent.Torrent) error {
 		copy(buffer[begin:end], piece.Data)
 
 		downloaded++
+		fmt.Printf("Downloaded piece from %v peers\n", runtime.NumGoroutine()-1)
+
 	}
 
 	close(workQueue)
 	close(resultQueue)
 
-	err = os.WriteFile("debian.iso", buffer, 0o644)
+	ex, err := os.Executable()
 	if err != nil {
-		fmt.Println("ERROR: ", err)
 		return err
+	}
+
+	rootPath := filepath.Dir(ex)
+	root, err := os.OpenRoot(rootPath)
+	if err != nil {
+		return err
+	}
+
+	if !torrent.IsMultiFile {
+		err = root.WriteFile(torrent.Info.Name, buffer, 0o644)
+		if err != nil {
+			fmt.Println("ERROR: ", err)
+			return err
+		}
+
+		return nil
+	}
+
+	err = root.Mkdir(torrent.Info.Name, 0o644)
+	if err != nil {
+		return err
+	}
+
+	offset := 0
+	for _, file := range torrent.Info.Files {
+		if offset > torrent.Info.Len {
+			return fmt.Errorf("torrent size doesnt match")
+		}
+
+		path := filepath.Join(file.Path...)
+		path = filepath.Join(torrent.Info.Name, path)
+		err := root.WriteFile(path, buffer[offset:file.Len], 0o644)
+		if err != nil {
+			return err
+		}
+
+		offset += file.Len
 	}
 
 	return nil

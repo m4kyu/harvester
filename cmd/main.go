@@ -9,7 +9,11 @@ import (
 )
 
 func main() {
-	torrent, _ := torrent.FromFile("debian-13.torrent")
+	torrent, err := torrent.FromFile("test.torrent")
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
 	fmt.Println("\t\t", torrent.Info.Name)
 	fmt.Println("Pieces len: ", torrent.Info.PieceSize)
 	fmt.Println("Pieces count: ", torrent.PiecesCount)
@@ -19,12 +23,21 @@ func main() {
 	fmt.Println("Comment: ", torrent.Comment)
 	fmt.Println(torrent.Announce)
 
+	if torrent.IsMultiFile {
+		fmt.Printf("Its a multi file torrent with total len of %v bytes\n", torrent.Info.Len)
+		for _, file := range torrent.Info.Files {
+			fmt.Printf("Name: %v. Len: %v.\n", file.Path, file.Len)
+		}
+	} else {
+		fmt.Printf("Its a single file torrent with total len of %v bytes\n", torrent.Info.Len)
+	}
+
 	fmt.Println("\t\tAnnounces")
 	for _, i := range torrent.AnnouncesList {
 		fmt.Println(i)
 	}
 
-	err := harvester.DownloadTorrent(torrent)
+	err = harvester.DownloadTorrent(torrent)
 	if err != nil {
 		fmt.Printf(err.Error())
 	}
