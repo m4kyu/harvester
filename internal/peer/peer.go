@@ -78,6 +78,8 @@ func (peer *Peer) Request(index uint32, begin uint32, length uint32) error {
 
 func (peer *Peer) SendHave(index uint32) error {
 	msg := message.Have(index)
+	fmt.Println("HAVE: ", msg.Serialize())
+
 	_, err := peer.Conn.Write(msg.Serialize())
 	if err != nil {
 		return err

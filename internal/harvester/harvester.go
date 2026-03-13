@@ -43,7 +43,7 @@ func DownloadTorrent(torrent torrent.Torrent) error {
 		copy(buffer[begin:end], piece.Data)
 
 		downloaded++
-		fmt.Printf("Downloaded piece from %v peers\n", runtime.NumGoroutine()-1)
+		fmt.Printf("Downloaded piece from %v peers. Left: %v\n", runtime.NumGoroutine()-1, torrent.PiecesCount-downloaded)
 
 	}
 
@@ -71,20 +71,21 @@ func DownloadTorrent(torrent torrent.Torrent) error {
 		return nil
 	}
 
-	err = root.Mkdir(torrent.Info.Name, 0o644)
+	fmt.Println("End buffer len: ", len(buffer))
+	err = root.Mkdir(torrent.Info.Name, 0o755)
 	if err != nil {
 		return err
 	}
 
 	offset := 0
 	for _, file := range torrent.Info.Files {
-		if offset > torrent.Info.Len {
+		if offset+file.Len > torrent.Info.Len {
 			return fmt.Errorf("torrent size doesnt match")
 		}
 
 		path := filepath.Join(file.Path...)
 		path = filepath.Join(torrent.Info.Name, path)
-		err := root.WriteFile(path, buffer[offset:file.Len], 0o644)
+		err := root.WriteFile(path, buffer[offset:offset+file.Len], 0o644)
 		if err != nil {
 			return err
 		}

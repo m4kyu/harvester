@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackpal/bencode-go"
@@ -18,6 +19,23 @@ type trackerResponse struct {
 }
 
 func PeersList(torrent tr.Torrent) ([]peer.Peer, error) {
+	raw, err := url.Parse(torrent.Announce)
+	if err != nil {
+		return nil, err
+	}
+
+	scheme := strings.ToLower(raw.Scheme)
+	switch scheme {
+	case "http":
+		return peersListHTTP(torrent)
+	case "udp":
+		return peersListUDP(torrent)
+	default:
+		return nil, fmt.Errorf("unknown scheme: ", scheme)
+	}
+}
+
+func peersListHTTP(torrent tr.Torrent) ([]peer.Peer, error) {
 	url, err := constructRequest(torrent)
 	if err != nil {
 		return nil, err

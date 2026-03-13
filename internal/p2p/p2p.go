@@ -64,16 +64,24 @@ func HandlePeer(peer pr.Peer, torrent tr.Torrent, wg *sync.WaitGroup, workQueue 
 			}
 		default:
 			peer.KeepAlive()
+			time.Sleep(4 * time.Second)
 			runtime.Gosched()
 			continue
 		}
 
 		if !peer.Bitfield.HasPiece(piece.Index) {
+			fmt.Printf("%v Doesnt have piece #%v\n", peer.IP, piece.Index)
 			workQueue <- piece
+			time.Sleep(1 * time.Second)
 			continue
 		}
 
-		data, err := downloadPiece(&peer, piece.Index, torrent.Info.PieceSize)
+		pieceSize := torrent.Info.PieceSize
+		if piece.Index == torrent.PiecesCount-1 {
+			pieceSize = torrent.Info.Len - (torrent.Info.PieceSize * piece.Index)
+		}
+
+		data, err := downloadPiece(&peer, piece.Index, pieceSize)
 		if err != nil {
 			fmt.Printf("Error downloading: %v. From: %v\n", err, peer.IP)
 			workQueue <- piece
@@ -89,6 +97,10 @@ func HandlePeer(peer pr.Peer, torrent tr.Torrent, wg *sync.WaitGroup, workQueue 
 			fmt.Printf("Sucssesfuly donwloaded piece #%v From: %v\n", piece.Index, peer.IP)
 			piece.Data = data
 			resQueue <- piece
+
+			if peer.Intrest {
+				peer.SendHave(uint32(piece.Index))
+			}
 		}
 	}
 }
@@ -96,15 +108,15 @@ func HandlePeer(peer pr.Peer, torrent tr.Torrent, wg *sync.WaitGroup, workQueue 
 func downloadPiece(peer *pr.Peer, index int, pieceSize int) ([]byte, error) {
 	state := PieceState{Peer: peer, Buffer: make([]byte, pieceSize), Size: 0, Backlog: 0}
 
-	//	peer.Conn.SetDeadline(time.Now().Add(30 * time.Second))
-	//	defer peer.Conn.SetDeadline(time.Time{}) // Disable the deadline
+	peer.Conn.SetDeadline(time.Now().Add(30 * time.Second))
+	defer peer.Conn.SetDeadline(time.Time{}) // Disable the deadline
 
 	for state.Size < pieceSize {
 		if !peer.Choking {
 			for state.Backlog < 5 && state.Requested < pieceSize {
 				blockSize := message.DEFAULT_BLOCK_SIZE
 				if state.Requested+message.DEFAULT_BLOCK_SIZE > pieceSize {
-					blockSize = state.Requested + message.DEFAULT_BLOCK_SIZE - pieceSize
+					blockSize = pieceSize - state.Requested
 				}
 
 				peer.Request(uint32(index), uint32(state.Requested), uint32(blockSize))

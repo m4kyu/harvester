@@ -18,7 +18,7 @@ type Client struct {
 
 func (cl *Client) CompleteHandshake(peer *pr.Peer, torrent tr.Torrent) error {
 	var err error
-	peer.Conn, err = net.DialTimeout("tcp", peer.IP.String()+":"+strconv.Itoa(int(peer.Port)), 3*time.Second)
+	peer.Conn, err = net.DialTimeout("tcp", peer.IP.String()+":"+strconv.Itoa(int(peer.Port)), 5*time.Second)
 	if err != nil {
 		return err
 	}
