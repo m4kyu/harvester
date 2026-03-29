@@ -4,12 +4,16 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
+	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/m4kyu/harvester/internal/bitfield"
 	"github.com/m4kyu/harvester/internal/message"
 )
 
 type Peer struct {
+	ID   string
 	IP   net.IP
 	Port uint16
 	Conn net.Conn
@@ -20,6 +24,19 @@ type Peer struct {
 	Intrest   bool // Peer wants something from us
 
 	Bitfield bitfield.Bitfield
+
+	DieC     chan string // Tells manager that peer has died
+	MessageC chan message.Message
+
+	WriterC    chan message.Message
+	WriterErrC chan error
+
+	DoneC    chan int
+	ReadErrC chan error
+
+	OnGoing      int
+	once         sync.Once
+	lastActivity atomic.Int64
 }
 
 func Unmarshall(bin []byte) ([]Peer, error) {
@@ -40,60 +57,80 @@ func Unmarshall(bin []byte) ([]Peer, error) {
 	return peers, nil
 }
 
-func (peer *Peer) SendUnchoke() error {
+func (peer *Peer) SendUnchoke() {
 	msg := message.Message{ID: message.MsgUnchoke, Payload: nil}
-	_, err := peer.Conn.Write(msg.Serialize())
-	if err != nil {
-		return err
-	}
+	peer.WriterC <- msg
 
 	peer.Chocked = false
-	return nil
 }
 
-func (peer *Peer) SendIntrested() error {
+func (peer *Peer) SendIntrested() {
 	msg := message.Message{ID: message.MsgIntrested, Payload: nil}
-	_, err := peer.Conn.Write(msg.Serialize())
-	if err != nil {
-		return err
-	}
+	peer.WriterC <- msg
 
 	peer.Intrested = true
-	return nil
 }
 
-func (peer *Peer) Request(index uint32, begin uint32, length uint32) error {
+func (peer *Peer) Request(index uint32, begin uint32, length uint32) {
 	if length == 0 {
 		length = message.DEFAULT_BLOCK_SIZE
 	}
 
 	msg := message.Requst(index, begin, length)
-	_, err := peer.Conn.Write(msg.Serialize())
-	if err != nil {
-		return err
-	}
-
-	return nil
+	peer.WriterC <- *msg
 }
 
-func (peer *Peer) SendHave(index uint32) error {
+func (peer *Peer) Cancel(index uint32, begin uint32, length uint32) {
+	if length == 0 {
+		length = message.DEFAULT_BLOCK_SIZE
+	}
+
+	msg := message.Requst(index, begin, length)
+	msg.ID = message.MsgCancel
+	peer.WriterC <- *msg
+}
+
+func (peer *Peer) SendHave(index uint32) {
 	msg := message.Have(index)
-	fmt.Println("HAVE: ", msg.Serialize())
-
-	_, err := peer.Conn.Write(msg.Serialize())
-	if err != nil {
-		return err
-	}
-
-	return nil
+	peer.WriterC <- *msg
 }
 
-func (peer *Peer) KeepAlive() error {
+func (peer *Peer) KeepAlive() {
 	msg := message.Message{ID: message.MsgKeepAlive, Payload: nil}
-	_, err := peer.Conn.Write(msg.Serialize())
-	if err != nil {
-		return err
-	}
+	peer.WriterC <- msg
+}
 
-	return nil
+func (peer *Peer) Close() {
+	peer.once.Do(func() {
+		close(peer.DoneC)
+		peer.Conn.Close()
+	})
+}
+
+func (peer *Peer) KeepAliveLoop() {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	interval := time.Duration(60)
+	for {
+		select {
+		case <-ticker.C:
+			last := peer.lastSeen()
+
+			if time.Since(last) >= interval {
+				peer.KeepAlive()
+				peer.touch()
+			}
+		case <-peer.DoneC:
+			return
+		}
+	}
+}
+
+func (peer *Peer) touch() {
+	peer.lastActivity.Store(time.Now().UnixNano())
+}
+
+func (peer *Peer) lastSeen() time.Time {
+	return time.Unix(0, peer.lastActivity.Load())
 }

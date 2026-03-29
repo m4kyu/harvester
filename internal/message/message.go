@@ -31,9 +31,11 @@ type Message struct {
 }
 
 type Block struct {
-	Begin uint32
-	Len   uint32
-	Data  []byte
+	PeerID string
+	Index  uint32
+	Begin  uint32
+	Len    uint32
+	Data   []byte
 }
 
 func Read(r io.Reader) (*Message, error) {
@@ -116,6 +118,7 @@ func (msg *Message) ParsePiece() (Block, error) {
 
 	var piece Block
 	piece.Len = uint32(pieceSize)
+	piece.Index = binary.BigEndian.Uint32(msg.Payload[:4])
 	piece.Begin = binary.BigEndian.Uint32(msg.Payload[4:8])
 	piece.Data = msg.Payload[8:]
 	return piece, nil

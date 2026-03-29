@@ -1,8 +1,10 @@
 package p2p
 
 type Piece struct {
-	Index int
-	Hash  [20]byte
+	PeerID    string
+	Index     int
+	Hash      [20]byte
+	PieceSize int
 
 	Data []byte
 }
