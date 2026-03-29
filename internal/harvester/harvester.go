@@ -49,6 +49,11 @@ type PieceProgress struct {
 	Status Status
 }
 
+type File struct {
+	FD   *os.File
+	Size int
+}
+
 func DownloadTorrent(torrent torrent.Torrent) error {
 	peers, err := tracker.PeersList(torrent)
 	if err != nil {
@@ -113,12 +118,92 @@ func DownloadTorrent(torrent torrent.Torrent) error {
 
 	fmt.Println("Peers count: ", len(peers))
 
-	buffer := make([]byte, torrent.Info.Len)
+	ex, err := os.Executable()
+	if err != nil {
+		return err
+	}
+
+	rootPath := filepath.Dir(ex)
+	root, err := os.OpenRoot(rootPath)
+	if err != nil {
+		return err
+	}
+
+	var files []File
+	if !torrent.IsMultiFile {
+		file, err := root.OpenFile(torrent.Info.Name, os.O_CREATE|os.O_RDWR, 0o644)
+		if err != nil {
+			fmt.Println("ERROR: ", err)
+			return err
+		}
+		defer file.Close()
+
+		err = file.Truncate(int64(torrent.Info.Len))
+		if err != nil {
+			return err
+		}
+
+		files = []File{{FD: file, Size: torrent.Info.Len}}
+	} else {
+		err = root.Mkdir(torrent.Info.Name, 0o755)
+		if err != nil {
+			return err
+		}
+
+		files = make([]File, len(torrent.Info.Files))
+		for _, file := range torrent.Info.Files {
+			path := filepath.Join(file.Path...)
+			path = filepath.Join(torrent.Info.Name, path)
+
+			dir := filepath.Dir(path)
+			err := os.MkdirAll(dir, 0o755)
+			if err != nil {
+				return err
+			}
+
+			fd, err := root.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o644)
+			if err != nil {
+				return err
+			}
+			defer fd.Close()
+
+			err = fd.Truncate(int64(file.Len))
+			if err != nil {
+				return err
+			}
+
+			files = append(files, File{FD: fd, Size: file.Len})
+		}
+	}
+
 	for client.Downloaded < torrent.PiecesCount {
 		piece := <-pieces
-		begin, end := torrent.PieceBounds(int(piece.Index))
+		begin, _ := torrent.PieceBounds(int(piece.Index))
 
-		copy(buffer[begin:end], piece.Data)
+		total := 0
+		for _, file := range files {
+			total += file.Size
+			if begin >= total {
+				continue
+			}
+
+			avaliable := file.Size - (begin - total - file.Size)
+			if avaliable < piece.PieceSize {
+				_, err := file.FD.WriteAt(piece.Data[:avaliable], int64(begin))
+				if err != nil {
+					return err
+				}
+
+				begin = avaliable
+				continue
+			}
+
+			_, err := file.FD.WriteAt(piece.Data, int64(begin))
+			if err != nil {
+				return err
+			}
+			break
+		}
 
 		client.m.Lock()
 		fmt.Printf("Downloaded piece from %v peers. Left: %v\n", len(client.Peers), torrent.PiecesCount-client.Downloaded)
@@ -128,7 +213,7 @@ func DownloadTorrent(torrent torrent.Torrent) error {
 	close(client.DoneC)
 	close(client.DieChn)
 
-	return saveFile(torrent, buffer)
+	return nil
 }
 
 func (h *Harvester) piecesManager(torrent torrent.Torrent, res chan p2p.Piece) {
@@ -143,7 +228,7 @@ func (h *Harvester) piecesManager(torrent torrent.Torrent, res chan p2p.Piece) {
 
 		h.m.Lock()
 		remaining := torrent.PiecesCount - h.Downloaded
-		if !h.EndGame && remaining <= 5 {
+		if !h.EndGame && remaining <= 10 {
 			h.EndGame = true
 			fmt.Println("\n\n\t\t\tEntering End Game mode!\n")
 		}
@@ -474,53 +559,6 @@ func (h *Harvester) cleanup() {
 		}
 		h.m.Unlock()
 	}
-}
-
-func saveFile(torrent torrent.Torrent, buffer []byte) error {
-	ex, err := os.Executable()
-	if err != nil {
-		return err
-	}
-
-	rootPath := filepath.Dir(ex)
-	root, err := os.OpenRoot(rootPath)
-	if err != nil {
-		return err
-	}
-
-	if !torrent.IsMultiFile {
-		err = root.WriteFile(torrent.Info.Name, buffer, 0o644)
-		if err != nil {
-			fmt.Println("ERROR: ", err)
-			return err
-		}
-
-		return nil
-	}
-
-	fmt.Println("End buffer len: ", len(buffer))
-	err = root.Mkdir(torrent.Info.Name, 0o755)
-	if err != nil {
-		return err
-	}
-
-	offset := 0
-	for _, file := range torrent.Info.Files {
-		if offset+file.Len > torrent.Info.Len {
-			return fmt.Errorf("torrent size doesnt match")
-		}
-
-		path := filepath.Join(file.Path...)
-		path = filepath.Join(torrent.Info.Name, path)
-		err := root.WriteFile(path, buffer[offset:offset+file.Len], 0o644)
-		if err != nil {
-			return err
-		}
-
-		offset += file.Len
-	}
-
-	return nil
 }
 
 func prepearWorkChan(queue chan p2p.Piece, torrent torrent.Torrent) {

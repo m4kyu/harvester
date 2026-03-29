@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	torrent, err := torrent.FromFile("debian-13.torrent")
+	torrent, err := torrent.FromFile("debian.torrent")
 	if err != nil {
 		fmt.Println(err.Error())
 		return

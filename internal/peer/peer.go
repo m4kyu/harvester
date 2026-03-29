@@ -76,7 +76,7 @@ func (peer *Peer) Request(index uint32, begin uint32, length uint32) {
 		length = message.DEFAULT_BLOCK_SIZE
 	}
 
-	msg := message.Requst(index, begin, length)
+	msg := message.Request(index, begin, length)
 	peer.WriterC <- *msg
 }
 
@@ -85,7 +85,7 @@ func (peer *Peer) Cancel(index uint32, begin uint32, length uint32) {
 		length = message.DEFAULT_BLOCK_SIZE
 	}
 
-	msg := message.Requst(index, begin, length)
+	msg := message.Request(index, begin, length)
 	msg.ID = message.MsgCancel
 	peer.WriterC <- *msg
 }

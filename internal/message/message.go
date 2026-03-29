@@ -79,7 +79,7 @@ func (msg *Message) Serialize() []byte {
 	return buffer
 }
 
-func Requst(index uint32, begin uint32, length uint32) *Message {
+func Request(index uint32, begin uint32, length uint32) *Message {
 	buffer := make([]byte, 12)
 	binary.BigEndian.PutUint32(buffer[:4], index)
 	binary.BigEndian.PutUint32(buffer[4:8], begin)   // Offset
