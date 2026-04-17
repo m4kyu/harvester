@@ -426,6 +426,8 @@ func (h *Harvester) handlePiece(peer *pr.Peer, piece p2p.Piece, res chan p2p.Pie
 			Index: piece.Index,
 			Data:  state.Buffer,
 		}
+
+		h.PiecesState[piece.Index] = nil
 		h.m.Unlock()
 
 		if h.EndGame {
@@ -447,6 +449,10 @@ func (h *Harvester) cancelPiece(index int, finishedID string) {
 
 	for peerid := range h.PiecesState[index] {
 		if peerid == finishedID {
+			continue
+		}
+		_, ok := h.Peers[peerid]
+		if !ok {
 			continue
 		}
 
@@ -512,7 +518,14 @@ func (h *Harvester) downloadPiece(peer *pr.Peer, index uint32, pieceSize int) {
 }
 
 func (h *Harvester) handleBlock(block message.Block) {
-	state := h.PiecesState[block.Index][block.PeerID]
+	h.m.Lock()
+	state, ok := h.PiecesState[block.Index][block.PeerID]
+	if !ok {
+		h.m.Unlock()
+		return
+	}
+	h.m.Unlock()
+
 	state.Mu.Lock()
 
 	copy(state.Buffer[block.Begin:], block.Data)
