@@ -19,6 +19,7 @@ type PieceState struct {
 	Backlog   int
 
 	Blocks map[uint32]message.Block
+	New    chan any
 
 	Mu sync.Mutex
 }

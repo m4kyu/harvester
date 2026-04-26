@@ -25,6 +25,7 @@ type Harvester struct {
 	DieChn         chan string
 	WriteErrC      chan error
 	ReadErrC       chan error
+	NextPiece      chan any // Indicates that new piece was received
 
 	DoneC chan int
 
@@ -69,6 +70,7 @@ func DownloadTorrent(torrent torrent.Torrent) error {
 
 		WriteErrC: make(chan error, 64),
 		ReadErrC:  make(chan error, 64),
+		NextPiece: make(chan any, 512),
 
 		DoneC:       make(chan int),
 		PiecesState: make([]map[string]*p2p.PieceState, torrent.PiecesCount),
@@ -178,6 +180,7 @@ func DownloadTorrent(torrent torrent.Torrent) error {
 
 	for client.Downloaded < torrent.PiecesCount {
 		piece := <-pieces
+		client.NextPiece <- struct{}{}
 		begin, _ := torrent.PieceBounds(int(piece.Index))
 
 		total := 0
@@ -217,41 +220,39 @@ func DownloadTorrent(torrent torrent.Torrent) error {
 }
 
 func (h *Harvester) piecesManager(torrent torrent.Torrent, res chan p2p.Piece) {
+	h.NextPiece <- struct{}{}
 	for {
 		select {
 		case <-h.DoneC:
 			return
-		default:
-		}
-
-		time.Sleep(5 * time.Microsecond)
-
-		h.m.Lock()
-		remaining := torrent.PiecesCount - h.Downloaded
-		if !h.EndGame && remaining <= 10 {
-			h.EndGame = true
-			fmt.Println("\n\n\t\t\tEntering End Game mode!\n")
-		}
-		h.m.Unlock()
-
-		for i := range torrent.PiecesCount {
+		case <-h.NextPiece:
 			h.m.Lock()
-			if h.PiecesProgress[i].Status == Completed {
-				h.m.Unlock()
-				continue
+			remaining := torrent.PiecesCount - h.Downloaded
+			if !h.EndGame && remaining <= 10 {
+				h.EndGame = true
+				fmt.Println("\n\n\t\t\tEntering End Game mode!\n")
 			}
 			h.m.Unlock()
 
-			if !h.EndGame {
-				h.orderPiece(torrent, i, res)
-			} else {
+			for i := range torrent.PiecesCount {
 				h.m.Lock()
-				if h.PiecesProgress[i].Status != InEndGame {
+				if h.PiecesProgress[i].Status == Completed {
 					h.m.Unlock()
-					h.orderPieceEndGame(torrent, i, res)
 					continue
 				}
 				h.m.Unlock()
+
+				if !h.EndGame {
+					h.orderPiece(torrent, i, res)
+				} else {
+					h.m.Lock()
+					if h.PiecesProgress[i].Status != InEndGame {
+						h.m.Unlock()
+						h.orderPieceEndGame(torrent, i, res)
+						continue
+					}
+					h.m.Unlock()
+				}
 			}
 		}
 	}
@@ -464,56 +465,58 @@ func (h *Harvester) cancelPiece(index int, finishedID string) {
 
 func (h *Harvester) downloadPiece(peer *pr.Peer, index uint32, pieceSize int) {
 	h.m.Lock()
+	if h.PiecesState[index] == nil {
+		h.m.Unlock()
+		return
+	}
+
 	h.PiecesState[index][peer.ID] = &p2p.PieceState{
 		Buffer:    make([]byte, pieceSize),
 		Blocks:    make(map[uint32]message.Block),
 		Requested: 0,
 		Backlog:   0,
 		Size:      0,
+		New:       make(chan any, 64),
 	}
 
 	state := h.PiecesState[index][peer.ID]
 	h.m.Unlock()
 
+	state.New <- struct{}{}
 	fmt.Printf("Peer: %v. Dowloading: %v\n", peer.ID, index)
 	for {
 		select {
 		case <-peer.DoneC:
 			return
-		default:
-		}
-
-		h.m.Lock()
-		if h.PiecesProgress[index].Status == Completed {
-			h.m.Unlock()
-			return
-		}
-
-		done := state.Size >= pieceSize
-		h.m.Unlock()
-
-		if done {
-			break
-		}
-
-		state.Mu.Lock()
-		if !peer.Choking {
-			for state.Backlog < 5 && state.Requested < pieceSize {
-				blockSize := message.DEFAULT_BLOCK_SIZE
-				if state.Requested+message.DEFAULT_BLOCK_SIZE > pieceSize {
-					blockSize = pieceSize - state.Requested
-				}
-
-				peer.Request(index, uint32(state.Requested), uint32(blockSize))
-
-				state.Backlog++
-				state.Requested += blockSize
-				state.Blocks[uint32(state.Requested)] = message.Block{Index: index, Begin: uint32(state.Requested), Len: uint32(blockSize)}
+		case <-state.New:
+			h.m.Lock()
+			if h.PiecesProgress[index].Status == Completed {
+				h.m.Unlock()
+				return
 			}
-		}
+			h.m.Unlock()
 
-		state.Mu.Unlock()
-		time.Sleep(2 * time.Microsecond)
+			state.Mu.Lock()
+			if state.Size >= pieceSize {
+				state.Mu.Unlock()
+				return
+			}
+			if !peer.Choking {
+				for state.Backlog < 5 && state.Requested < pieceSize {
+					blockSize := message.DEFAULT_BLOCK_SIZE
+					if state.Requested+message.DEFAULT_BLOCK_SIZE > pieceSize {
+						blockSize = pieceSize - state.Requested
+					}
+
+					peer.Request(index, uint32(state.Requested), uint32(blockSize))
+
+					state.Backlog++
+					state.Requested += blockSize
+					state.Blocks[uint32(state.Requested)] = message.Block{Index: index, Begin: uint32(state.Requested), Len: uint32(blockSize)}
+				}
+			}
+			state.Mu.Unlock()
+		}
 	}
 }
 
@@ -536,6 +539,8 @@ func (h *Harvester) handleBlock(block message.Block) {
 
 	delete(state.Blocks, block.Begin)
 	state.Mu.Unlock()
+
+	state.New <- struct{}{}
 }
 
 func (h *Harvester) processMsg(peer *pr.Peer, msg message.Message) error {
