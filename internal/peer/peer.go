@@ -34,9 +34,11 @@ type Peer struct {
 	DoneC    chan int
 	ReadErrC chan error
 
-	OnGoing      int
-	once         sync.Once
-	lastActivity atomic.Int64
+	OnGoing int
+	once    sync.Once
+
+	lastReceive atomic.Int64
+	lastSent    atomic.Int64
 }
 
 func Unmarshall(bin []byte) ([]Peer, error) {
@@ -107,30 +109,18 @@ func (peer *Peer) Close() {
 	})
 }
 
-func (peer *Peer) KeepAliveLoop() {
-	ticker := time.NewTicker(1 * time.Second)
-	defer ticker.Stop()
-
-	interval := time.Duration(60)
-	for {
-		select {
-		case <-ticker.C:
-			last := peer.lastSeen()
-
-			if time.Since(last) >= interval {
-				peer.KeepAlive()
-				peer.touch()
-			}
-		case <-peer.DoneC:
-			return
-		}
-	}
+func (peer *Peer) touch() {
+	peer.lastReceive.Store(time.Now().UnixNano())
 }
 
-func (peer *Peer) touch() {
-	peer.lastActivity.Store(time.Now().UnixNano())
+func (peer *Peer) sent() {
+	peer.lastSent.Store(time.Now().UnixNano())
 }
 
 func (peer *Peer) lastSeen() time.Time {
-	return time.Unix(0, peer.lastActivity.Load())
+	return time.Unix(0, peer.lastReceive.Load())
+}
+
+func (peer *Peer) lastInteract() time.Time {
+	return time.Unix(0, peer.lastSent.Load())
 }

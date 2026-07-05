@@ -27,6 +27,6 @@ func (peer *Peer) WriteLoop() {
 			return
 		}
 
-		peer.touch()
+		peer.sent()
 	}
 }

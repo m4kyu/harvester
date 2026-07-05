@@ -45,10 +45,11 @@ func HandlePeer(peer *pr.Peer, torrent tr.Torrent) {
 
 	go peer.ReadLoop()
 	go peer.WriteLoop()
-	go peer.KeepAlive()
+	go peer.Monitor()
 
 	peer.SendUnchoke()
 	peer.SendIntrested()
+	peer.KeepAlive()
 
 	fmt.Println("Sucssesful intrested: ", peer.IP)
 

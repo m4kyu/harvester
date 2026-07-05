@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"sync"
 	"time"
@@ -209,7 +210,7 @@ func DownloadTorrent(torrent torrent.Torrent) error {
 		}
 
 		client.m.Lock()
-		fmt.Printf("Downloaded piece from %v peers. Left: %v\n", len(client.Peers), torrent.PiecesCount-client.Downloaded)
+		fmt.Printf("Downloaded piece from %v peers. Left: %v. Goroutines: %v\n", len(client.Peers), torrent.PiecesCount-client.Downloaded, runtime.NumGoroutine())
 		client.m.Unlock()
 	}
 
