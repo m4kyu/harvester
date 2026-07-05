@@ -54,7 +54,7 @@ func FromFile(path string) (Torrent, error) {
 	}
 
 	// TODO: Fix tmp solution
-	_, err = file.Seek(0, 0)
+	_, err = file.Seek(0, io.SeekStart)
 	if err != nil {
 		return Torrent{}, err
 	}

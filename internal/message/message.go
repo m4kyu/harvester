@@ -99,7 +99,7 @@ func Have(index uint32) *Message {
 	binary.BigEndian.PutUint32(buffer[:4], index)
 
 	msg := Message{
-		ID:      MsgRequest,
+		ID:      MsgHave,
 		Payload: buffer,
 	}
 
