@@ -579,11 +579,3 @@ func (h *Harvester) cleanup() {
 		h.m.Unlock()
 	}
 }
-
-func prepearWorkChan(queue chan p2p.Piece, torrent torrent.Torrent) {
-	for i := range torrent.PiecesCount {
-		var hash [20]byte
-		copy(hash[:], torrent.Info.Pieces[i*20:(i+1)*20])
-		queue <- p2p.Piece{Index: i, Hash: hash}
-	}
-}
