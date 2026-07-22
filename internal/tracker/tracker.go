@@ -31,7 +31,7 @@ func PeersList(torrent tr.Torrent) ([]peer.Peer, error) {
 	case "udp":
 		return peersListUDP(torrent)
 	default:
-		return nil, fmt.Errorf("unknown scheme: ", scheme)
+		return nil, fmt.Errorf("unknown scheme: %s", scheme)
 	}
 }
 

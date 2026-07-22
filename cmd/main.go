@@ -39,6 +39,6 @@ func main() {
 
 	err = harvester.DownloadTorrent(torrent)
 	if err != nil {
-		fmt.Printf(err.Error())
+		fmt.Println(err)
 	}
 }

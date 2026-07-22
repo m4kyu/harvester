@@ -18,7 +18,7 @@ func (peer *Peer) Monitor() {
 			last := peer.lastSeen()
 
 			if time.Since(last) >= interval {
-				fmt.Println("\nDied from inactivity\n\n")
+				fmt.Println("Died from inactivity")
 				peer.Close()
 				return
 			}

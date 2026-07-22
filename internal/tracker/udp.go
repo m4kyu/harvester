@@ -91,7 +91,7 @@ func (client *UDPClient) announce(t torrent.Torrent) ([]peer.Peer, error) {
 	}
 
 	if binary.BigEndian.Uint32(resp[0:4]) != 1 { // Check action
-		return nil, fmt.Errorf("expected action 1, got: ", binary.BigEndian.Uint32(resp[0:4]))
+		return nil, fmt.Errorf("expected action 1, got: %d", binary.BigEndian.Uint32(resp[0:4]))
 	}
 
 	if binary.BigEndian.Uint32(resp[4:8]) != transID {
