@@ -11,7 +11,7 @@ import (
 
 type Storage struct {
 	t     torrent.Torrent
-	files []File
+	Files []File
 }
 
 type File struct {
@@ -47,14 +47,14 @@ func Init(t torrent.Torrent) (Storage, error) {
 			return Storage{}, err
 		}
 
-		s.files = []File{{FD: file, Size: t.Info.Len}}
+		s.Files = []File{{FD: file, Size: t.Info.Len}}
 	} else {
 		err = root.Mkdir(t.Info.Name, 0o755)
 		if err != nil {
 			return Storage{}, err
 		}
 
-		s.files = make([]File, len(t.Info.Files))
+		s.Files = make([]File, len(t.Info.Files))
 		for _, file := range t.Info.Files {
 			path := filepath.Join(file.Path...)
 			path = filepath.Join(t.Info.Name, path)
@@ -79,7 +79,7 @@ func Init(t torrent.Torrent) (Storage, error) {
 				return Storage{}, err
 			}
 
-			s.files = append(s.files, File{FD: fd, Size: file.Len})
+			s.Files = append(s.Files, File{FD: fd, Size: file.Len})
 		}
 	}
 
@@ -90,7 +90,7 @@ func (s *Storage) AddBlock(piece p2p.Piece) error {
 	begin, _ := s.t.PieceBounds(int(piece.Index))
 
 	total := 0
-	for _, file := range s.files {
+	for _, file := range s.Files {
 		total += file.Size
 		if begin >= total {
 			continue
@@ -118,7 +118,7 @@ func (s *Storage) AddBlock(piece p2p.Piece) error {
 }
 
 func (s *Storage) Finish() {
-	for _, file := range s.files {
+	for _, file := range s.Files {
 		file.FD.Close()
 	}
 }
